@@ -1,0 +1,33 @@
+{
+    "name": "chronhub/storm-clock",
+    "description": "Strict UTC clock with microsecond precision for the Storm framework",
+    "type": "library",
+    "license": "MIT",
+    "keywords": ["ddd", "clock", "psr-20", "utc", "event-sourcing"],
+    "require": {
+        "php": ">=8.5",
+        "chronhub/storm-contracts": "self.version",
+        "psr/clock": "^1.0",
+        "symfony/clock": "^8.1",
+        "symfony/dependency-injection": "^8.1"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^13.3.0",
+        "phpstan/phpstan": "^2.2.8"
+    },
+    "autoload": {
+        "psr-4": {
+            "Storm\\Clock\\": "./"
+        },
+        "exclude-from-classmap": [
+            "/Tests/"
+        ]
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Storm\\Clock\\Tests\\": "Tests/"
+        }
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}

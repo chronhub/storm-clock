@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Storm\Clock;
 
 use DateInterval;
+use DateInvalidOperationException;
 use DateMalformedStringException;
 use DateRangeError;
 use DateTime;
@@ -66,11 +67,18 @@ final class PointInTime extends DateTimeImmutable implements Stringable
     /**
      * Storage timestamp shape: the text form PostgreSQL renders for a `timestamptz`, plus the
      * canonical RFC 3339 form. Space or `T` separator, an optional fraction of 1 to 6 digits, and a
-     * mandatory offset: `Z`, short `+00`, compact `+0200`, or full `+02:00`. PostgreSQL trims
-     * trailing fractional zeros, down to none. Relative keywords and offset-less values, whose
-     * meaning would depend on the process timezone, do not match.
+     * mandatory offset in one of these forms:
+     *
+     * - UTC `Z`
+     * - Short `+00`
+     * - Compact `+0200`
+     * - Hours and minutes `+02:00`
+     * - Historical seconds `+00:09:21`
+     *
+     * PostgreSQL trims trailing fractional zeros, down to none. Relative keywords and offset-less
+     * values, whose meaning would depend on the process timezone, do not match.
      */
-    private const string STORAGE_REGEX = '/^(?<date>\d{4}-\d{2}-\d{2})[ T](?<time>\d{2}:\d{2}:\d{2})(?:\.(?<fraction>\d{1,6}))?(?<offset>Z|[+-]\d{2}(?::?\d{2})?)\z/';
+    private const string STORAGE_REGEX = '/^(?<date>\d{4}-\d{2}-\d{2})[ T](?<time>\d{2}:\d{2}:\d{2})(?:\.(?<fraction>\d{1,6}))?(?<offset>Z|[+-]\d{2}(?::\d{2}(?::\d{2})?|\d{2})?)\z/';
 
     /**
      * @throws InvalidDateTimeException
@@ -89,6 +97,7 @@ final class PointInTime extends DateTimeImmutable implements Stringable
             : $datetime;
 
         ClockAssertion::assertFormat($normalized);
+        $this->storable($this);
 
         // The shape check accepts an out-of-range date such as Feb 30, hour 24:60, or day/month 00
         // that the lenient parser silently rolled over to a different instant. Reject it: a canonical
@@ -153,17 +162,18 @@ final class PointInTime extends DateTimeImmutable implements Stringable
             throw InvalidDateTimeException::invalidFormat($raw, 'Y-m-d[ T]H:i:s[.u] with a mandatory offset');
         }
 
-        // The SEMANTIC gate over the shape gate's `[+-]\d{2}(:?\d{2})?` capture: the lenient parser
+        // The semantic gate validates offset components, including historical offset seconds. The parser
         // happily computes an instant from an absurd `+24` or `+02:99`, and RFC 3339's negative
         // zero, `-00` or `-00:00`, asserts "local offset unknown" rather than UTC, which the
         // canonical constructor already refuses. Real drivers stay within -12:00..+14:00, so an
-        // offset beyond 14 hours, an impossible minute, or that negative zero is a corrupt
+        // hour beyond 14, an impossible minute or second, or that negative zero is a corrupt
         // persisted value, refused like every other one.
-        if ($parts['offset'] !== 'Z' && preg_match('/^(?<sign>[+-])(?<hours>\d{2}):?(?<minutes>\d{2})?$/', $parts['offset'], $offset) === 1) {
+        if ($parts['offset'] !== 'Z' && preg_match('/^(?<sign>[+-])(?<hours>\d{2})(?::?(?<minutes>\d{2})(?::(?<seconds>\d{2}))?)?$/', $parts['offset'], $offset) === 1) {
             $hours = (int) $offset['hours'];
             $minutes = (int) ($offset['minutes'] ?? '0');
+            $seconds = (int) ($offset['seconds'] ?? '0');
 
-            if ($hours > 14 || $minutes > 59 || ($offset['sign'] === '-' && $hours === 0 && $minutes === 0)) {
+            if ($hours > 14 || $minutes > 59 || $seconds > 59 || ($offset['sign'] === '-' && $hours === 0 && $minutes === 0 && $seconds === 0)) {
                 throw InvalidDateTimeException::outOfRange($raw);
             }
         }
@@ -324,12 +334,19 @@ final class PointInTime extends DateTimeImmutable implements Stringable
     /**
      * {@inheritDoc}
      *
-     * @throws InvalidDateTimeException when the computed instant leaves the storable year range
+     * @throws InvalidDateTimeException when native subtraction rejects the interval or the computed
+     *                                  instant leaves the storable year range
      */
     #[Override]
     public function sub(DateInterval $interval): static
     {
-        return $this->storable(parent::sub($interval));
+        try {
+            $subtracted = parent::sub($interval);
+        } catch (DateInvalidOperationException $e) {
+            throw new InvalidDateTimeException('Cannot subtract date interval: '.$e->getMessage(), previous: $e);
+        }
+
+        return $this->storable($subtracted);
     }
 
     /**

@@ -27,6 +27,28 @@ final class PointInTimeTest extends TestCase
     // -------------------------------------------------------------------------
 
     #[Test]
+    public function construction_refuses_year_zero_through_every_factory(): void
+    {
+        $factories = [
+            static fn (): PointInTime => new PointInTime('0000-01-01T00:00:00.000000+00:00'),
+            static fn (): PointInTime => PointInTime::from('0000-01-01T00:00:00.000000Z'),
+            static fn (): PointInTime => PointInTime::fromDateTime(new DateTimeImmutable('0000-01-01T00:00:00+00:00')),
+            static fn (): PointInTime => PointInTime::fromStorage('0000-01-01 00:00:00+00'),
+            static fn (): PointInTime => PointInTime::fromDateTime(new DateTimeImmutable('0001-01-01T00:00:00+01:00')),
+        ];
+        foreach ($factories as $factory) {
+            try {
+                $factory();
+                $this->fail('Year zero must be refused before storage');
+            } catch (InvalidDateTimeException $e) {
+                $this->assertStringContainsString('0001-9999', $e->getMessage());
+            }
+        }
+        $this->assertSame('0001-01-01T00:00:00.000000+00:00', PointInTime::from('0001-01-01T00:00:00.000000Z')->toString());
+        $this->assertSame('9999-12-31T23:59:59.999999+00:00', PointInTime::from('9999-12-31T23:59:59.999999Z')->toString());
+    }
+
+    #[Test]
     public function creates_from_now(): void
     {
         $point = new PointInTime('now');
@@ -152,6 +174,9 @@ final class PointInTimeTest extends TestCase
      */
     public static function storage_shapes(): iterable
     {
+        yield 'positive offset seconds' => ['2024-01-15 10:00:00.123456+00:00:01', '2024-01-15T09:59:59.123456+00:00'];
+        yield 'negative offset seconds' => ['2024-01-15 10:00:00.123456-00:00:01', '2024-01-15T10:00:01.123456+00:00'];
+        yield 'offset with zero seconds' => ['2024-01-15 10:00:00+02:30:00', '2024-01-15T07:30:00.000000+00:00'];
         yield 'PG short offset, full micros' => ['2026-06-03 12:21:57.202266+00', '2026-06-03T12:21:57.202266+00:00'];
         yield 'PG trims trailing fractional zeros' => ['2026-06-03 12:21:57.2+00', '2026-06-03T12:21:57.200000+00:00'];
         yield 'PG trims the whole fraction' => ['2026-06-03 12:21:57+00', '2026-06-03T12:21:57.000000+00:00'];
@@ -160,6 +185,8 @@ final class PointInTimeTest extends TestCase
         yield 'non-UTC offset preserves the instant' => ['2024-01-15 10:00:00.000000+02:00', '2024-01-15T08:00:00.000000+00:00'];
         yield 'short non-UTC offset' => ['2024-01-15 10:00:00+02', '2024-01-15T08:00:00.000000+00:00'];
         yield 'compact offset' => ['2024-01-15 10:00:00+0200', '2024-01-15T08:00:00.000000+00:00'];
+        yield 'negative sub-hour offset' => ['2024-01-15 10:00:00-00:30', '2024-01-15T10:30:00.000000+00:00'];
+        yield 'compact negative sub-hour offset' => ['2024-01-15 10:00:00-0030', '2024-01-15T10:30:00.000000+00:00'];
         yield 'negative offset' => ['2024-01-15 10:00:00-05:00', '2024-01-15T15:00:00.000000+00:00'];
         yield 'max positive offset +14:00' => ['2024-01-15 10:00:00.000000+14:00', '2024-01-14T20:00:00.000000+00:00'];
         yield 'offset with 59 minutes' => ['2024-01-15 10:00:00.000000+05:59', '2024-01-15T04:01:00.000000+00:00'];
@@ -184,6 +211,13 @@ final class PointInTimeTest extends TestCase
     public static function rejected_storage_values(): iterable
     {
         // shape violations: a healthy driver never emits these
+        yield 'offset second beyond 59' => ['2024-01-15 10:00:00+02:30:60'];
+        yield 'offset minute beyond 59 with seconds' => ['2024-01-15 10:00:00+02:60:01'];
+        yield 'offset hour beyond range with seconds' => ['2024-01-15 10:00:00+15:00:01'];
+        yield 'negative zero with seconds' => ['2024-01-15 10:00:00-00:00:00'];
+        yield 'compact offset seconds are not a storage shape' => ['2024-01-15 10:00:00+023001'];
+        yield 'mixed offset separators are not a storage shape' => ['2024-01-15 10:00:00+0230:01'];
+        yield 'incomplete offset seconds' => ['2024-01-15 10:00:00+02:30:'];
         yield 'relative keyword' => ['yesterday'];
         yield 'unparseable garbage' => ['totally not a date'];
         yield 'missing offset (would depend on the process timezone)' => ['2024-01-15 10:00:00.000000'];

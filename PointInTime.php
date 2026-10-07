@@ -167,7 +167,10 @@ final class PointInTime extends DateTimeImmutable implements Stringable
         // zero, `-00` or `-00:00`, asserts "local offset unknown" rather than UTC, which the
         // canonical constructor already refuses. Real drivers stay within -12:00..+14:00, so an
         // hour beyond 14, an impossible minute or second, or that negative zero is a corrupt
-        // persisted value, refused like every other one.
+        // persisted value, refused like every other one. The anchors of the offset regex are
+        // equivalent mutants, counted on purpose: `STORAGE_REGEX` already captured the offset
+        // whole, so the match spans it with or without them, and an ignore on this line would
+        // mask its killed siblings.
         if ($parts['offset'] !== 'Z' && preg_match('/^(?<sign>[+-])(?<hours>\d{2})(?::?(?<minutes>\d{2})(?::(?<seconds>\d{2}))?)?$/', $parts['offset'], $offset) === 1) {
             $hours = (int) $offset['hours'];
             $minutes = (int) ($offset['minutes'] ?? '0');
@@ -425,6 +428,8 @@ final class PointInTime extends DateTimeImmutable implements Stringable
      */
     private function storable(self $computed): static
     {
+        // @infection-ignore-all; equivalent: 'Y' is a numeric string, and the bounds below compare it
+        // numerically with or without the cast; the `(int)` is kept for type clarity, not behavior
         $year = (int) $computed->format('Y');
 
         if ($year < 1 || $year > 9999) {

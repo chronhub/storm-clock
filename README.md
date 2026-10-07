@@ -86,21 +86,28 @@ $clock->moveTo('2024-06-01T08:00:00.000000Z');
 
 ## Wiring
 
-Register `SystemClock` as a decorator and inject the PSR-20 interface everywhere; swap a
-`FrozenClock` in tests:
+`StormBundle` registers `SystemClock` as an adapter for the Storm `Clock` port. The application's
+PSR-20 clock remains unchanged, including support for local-time rendering with `setTimezone()`.
+Equivalent explicit wiring is:
 
 ```yaml
 services:
     Storm\Clock\SystemClock:
-        decorates: Psr\Clock\ClockInterface
         arguments:
-            $inner: '@Storm\Clock\SystemClock.inner'
+            $inner: '@Psr\Clock\ClockInterface'
+    Storm\Contracts\Clock\Clock: '@Storm\Clock\SystemClock'
 ```
+
+Inject the Storm port when UTC `PointInTime` values are required. In tests, replace that port with
+`FrozenClock`, or replace the underlying PSR-20 clock with a Symfony `MockClock` to control both
+ports. To shift both clocks in a simulation, decorate the PSR-20 source with a decorator returning
+native `DateTimeImmutable` values; `SystemClock` normalizes the shifted source once for Storm.
+Decorating `SystemClock` itself affects only Storm consumers.
 
 ## Design decisions
 
-- **`PointInTime` extends `DateTimeImmutable`** — PSR-20 compatibility for free; the UTC invariant
-  is enforced by closing the escape routes, not by hiding the native API.
+- **`PointInTime` extends `DateTimeImmutable`** — its UTC restrictions belong to the Storm port;
+  it is not substituted globally for native datetime values returned by the application's PSR-20 port.
 - **One validator, one exception** — `ClockAssertion` checks format, UTC and precision in a single
   regex pass; `InvalidDateTimeException` covers every refusal. The regex and the accepted UTC
   variant names are published as constants on `ClockAssertion` for Doctrine types and tests.

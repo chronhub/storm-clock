@@ -191,6 +191,7 @@ final class PointInTimeTest extends TestCase
         yield 'max positive offset +14:00' => ['2024-01-15 10:00:00.000000+14:00', '2024-01-14T20:00:00.000000+00:00'];
         yield 'offset with 59 minutes' => ['2024-01-15 10:00:00.000000+05:59', '2024-01-15T04:01:00.000000+00:00'];
         yield 'negative offset with 59 minutes' => ['2024-01-15 10:00:00.000000-05:59', '2024-01-15T15:59:00.000000+00:00'];
+        yield 'offset with 59 seconds' => ['2024-01-15 10:00:00.000000+05:30:59', '2024-01-15T04:29:01.000000+00:00'];
     }
 
     #[Test]

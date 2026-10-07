@@ -11,16 +11,14 @@ use Storm\Contracts\Clock\Clock;
 /*
  * Clock package wiring.
  *
- * SystemClock decorates the framework's PSR-20 clock from symfony/clock so that every
- * `Psr\Clock\ClockInterface` consumer in the app receives Storm's UTC + microsecond
- * guaranteed clock. The `.inner` reference is the service being decorated.
+ * SystemClock adapts the application's PSR-20 clock for the Storm port only.
+ * PSR-20 consumers keep the source clock and its native datetime behavior.
  */
 return static function (ContainerConfigurator $container): void {
     $services = $container->services();
 
     $services->set(SystemClock::class)
-        ->decorate(ClockInterface::class)
-        ->args([service('.inner')]);
+        ->args([service(ClockInterface::class)]);
 
     // Inject the richer Storm contract that returns PointInTime wherever `Clock` is asked for.
     $services->alias(Clock::class, SystemClock::class);

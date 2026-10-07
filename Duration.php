@@ -37,6 +37,9 @@ final readonly class Duration
 
         // The int cast of an over-long digit string saturates at PHP_INT_MAX; the upper bound
         // below catches that saturation together with a genuine multiplication overflow.
+        // Two equivalent mutants stay counted here: `$matches[0]` starts with the same digits,
+        // which the cast reads alone, and an uncast numeric string compares and multiplies like
+        // its integer; an ignore would mask the killed `$matches[2]` sibling.
         $amount = (int) $matches[1];
         if ($amount < 1 || $amount > intdiv(PHP_INT_MAX, $unit)) {
             return null;
